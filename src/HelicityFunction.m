@@ -39,22 +39,30 @@ classdef HelicityFunction
             %
             % Inputs:
             %   delta_alpha - The width of the bins for the alpha axis
-            %   delta_rho   - The width of the bins for the rho axis
-            %   max_rho     - The maximum value for the rho axis
+            %   delta_rho   - (optional) The width of the bins for the rho axis
+            %   max_rho     - (optional) The maximum value for the rho axis
             n_alpha = round(pi/2 / delta_alpha);
             alpha_edges = linspace(0, pi/2, n_alpha + 1);
             obj.alpha_center = (alpha_edges(1:end-1) + alpha_edges(2:end)) / 2;
             obj.alpha_upper = alpha_edges(2:end);
 
-            n_rho = ceil(max_rho / delta_rho);
-            max_rho = n_rho * delta_rho;
-            rho_edges = linspace(0, max_rho, n_rho + 1);
-            obj.rho_center = (rho_edges(1:end-1) + rho_edges(2:end)) / 2;
-            obj.rho_upper = rho_edges(2:end);
+            obj.bin_area = (obj.alpha_center(2) - obj.alpha_center(1));
+
+            if nargin < 2 || ceil(max_rho / delta_rho) < 2
+                n_rho = 1;
+                obj.rho_center = NaN;
+                obj.rho_upper = NaN;
+            else
+                n_rho = ceil(max_rho / delta_rho);
+                max_rho = n_rho * delta_rho;
+                rho_edges = linspace(0, max_rho, n_rho + 1);
+                obj.rho_center = (rho_edges(1:end-1) + rho_edges(2:end)) / 2;
+                obj.rho_upper = rho_edges(2:end);
+
+                obj.bin_area = obj.bin_area * (obj.rho_center(2) - obj.rho_center(1));
+            end
 
             obj.hfunc = zeros(n_rho, n_alpha);
-
-            obj.bin_area = (obj.alpha_center(2) - obj.alpha_center(1)) * (obj.rho_center(2) - obj.rho_center(1));
             obj.normalization_factor = 0;
         end
 
@@ -67,22 +75,28 @@ classdef HelicityFunction
             %
             % Output:
             %   obj - A new helicity function object that is the sum of obj1 and obj2
+            assert(all(obj1.alpha_center == obj2.alpha_center), "Alpha axes must match exactly")
 
-            % Determine which object has the larger rho axis and assign to obj
-            if length(obj1.rho_center) >= length(obj2.rho_center)
+            if xor(isnan(obj1.rho_center), isnan(obj2.rho_center))
+                throw("Cannot combine 2 helicity functions if one is 1D and the other is 2D.");
+            elseif isnan(obj1.rho_center)
                 obj = obj1;
-                obj0 = obj2;
+                obj.hfunc = obj.hfunc + obj2.hfunc;
             else
-                obj = obj2;
-                obj0 = obj1;
+                % Determine which object has the larger rho axis and assign to obj
+                if length(obj1.rho_center) >= length(obj2.rho_center)
+                    obj = obj1;
+                    obj0 = obj2;
+                else
+                    obj = obj2;
+                    obj0 = obj1;
+                end
+                nrho0 = length(obj0.rho_center);
+                assert(all(obj.rho_center(1:nrho0) == obj0.rho_center), "Discretization of rho axes must match")
+                obj.hfunc(1:nrho0,:) = obj.hfunc(1:nrho0,:) + obj0.hfunc;
             end
 
-            nrho0 = length(obj0.rho_center);
-            assert(all(obj.alpha_center == obj0.alpha_center), "Alpha axes must match exactly")
-            assert(all(obj.rho_center(1:nrho0) == obj0.rho_center), "Discretization of rho axes must match")
-
             obj.normalization_factor = obj.normalization_factor + obj0.normalization_factor;
-            obj.hfunc(1:nrho0,:) = obj.hfunc(1:nrho0,:) + obj0.hfunc;
         end
 
         function htot = total_helicity(obj)
@@ -100,11 +114,16 @@ classdef HelicityFunction
             %   alpha - The value to add to the alpha axis
             %   rho   - The value to add to the rho axis
             %   value - The value to add to the helicity function
-            i = find(rho <= obj.rho_upper, 1);
             j = find(abs(alpha) <= obj.alpha_upper, 1);
-            if isempty(i)
-                warning("Rho is out of bounds")
-                return;
+
+            if isnan(obj.rho_center)
+                i = 1;
+            else
+                i = find(rho <= obj.rho_upper, 1);
+                if isempty(i)
+                    warning("Rho is out of bounds")
+                    return;
+                end
             end
 
             obj.normalization_factor = obj.normalization_factor + value;

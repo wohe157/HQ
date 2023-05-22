@@ -49,9 +49,8 @@ switch input_type
         orientation = varargin{4};
         centroid    = varargin{5};
         delta_alpha = varargin{6};
-        delta_rho   = varargin{7};
         hfunc = calculate_hfunc_image(img, ps, mask, ...
-            orientation, centroid, delta_alpha, delta_rho);
+            orientation, centroid, delta_alpha);
     case "volume"
         vol         = varargin{1};
         mask        = varargin{2};
@@ -76,7 +75,7 @@ switch input_type
 end
 
 % -------------------------------------------------------------------------
-function hfunc = calculate_hfunc_image(img, ps, mask, orientation, centroid, delta_alpha, delta_rho)
+function hfunc = calculate_hfunc_image(img, ps, mask, orientation, centroid, delta_alpha)
 arguments
     img (:,:)
     ps (1,1)
@@ -84,26 +83,18 @@ arguments
     orientation (1,1)
     centroid (2,1)
     delta_alpha (1,1)
-    delta_rho (1,1)
 end
 assert(all(size(img) == size(mask)), "img and mask must have the same dimensions.")
 
 idx_list = find(mask);
 
-% Define the coordinate grid
-[x,y] = meshgrid(1:size(img,2), 1:size(img,1));
-x = ps * x;
-y = ps * flipud(y);
-
 % Use the gradient for edge detection and orientation mapping
 [gmag, gdir] = imgradient(img);
 
-% First calculate rho and alpha in each pixel
-rho = zeros(size(img));
+% First calculate alpha in each pixel
 alpha = zeros(size(img));
 for i = 1:length(idx_list)
     idx = idx_list(i);
-    rho(idx) = abs(cos(orientation) * (centroid(2) - y(idx)) - sin(orientation) * (centroid(1) - x(idx)));
     alpha(idx) = deg2rad(gdir(idx)) - orientation;  % theta is wrt x-axis, so don't subtract pi/2 to account for
                                                     % the difference between normal and inclination angle
     while alpha(idx) >= pi/2, alpha(idx) = alpha(idx) - pi; end
@@ -112,10 +103,10 @@ end
 
 % Then create a helicity function and fill it with the previously
 % calculated values
-hfunc = HelicityFunction(delta_alpha, delta_rho, max(rho,[],"all"));
+hfunc = HelicityFunction(delta_alpha);
 for i = 1:length(idx_list)
     idx = idx_list(i);
-    hfunc = add_value(hfunc, alpha(idx), rho(idx), gmag(idx));
+    hfunc = add_value(hfunc, alpha(idx), [], gmag(idx));
 end
 
 % -------------------------------------------------------------------------
